@@ -1,0 +1,158 @@
+3333####################################  rotational trial #######################
+
+class WACNN(CompressionModel):
+    """CNN based model"""
+
+    def __init__(self, N=192, M=320, **kwargs):
+        super().__init__(**kwargs)
+        self.num_slices = 10
+        self.max_support_slices = 5
+
+        self.first = nn.Conv2d(9, 187, kernel_size=3, stride=1, padding=1)
+        self.tconv = nn.Conv2d(512, , kernel_size=3, stride=1, padding=1)
+
+
+
+
+        self.g_a = nn.Sequential(
+            conv(192, N, kernel_size=5, stride=2),
+            GDN(N),
+            conv(N, N, kernel_size=5, stride=2),
+            GDN(N),
+            Win_noShift_Attention(dim=N, num_heads=8, window_size=8, shift_size=4),
+            conv(N, N, kernel_size=5, stride=2),
+            GDN(N),
+            conv(N, M, kernel_size=5, stride=2),
+            Win_noShift_Attention(dim=M, num_heads=8, window_size=4, shift_size=2),
+        )
+        self.g_s = nn.Sequential(
+            Win_noShift_Attention(dim=M, num_heads=8, window_size=4, shift_size=2),
+            deconv(M, N, kernel_size=5, stride=2),
+            GDN(N, inverse=True),
+            deconv(N, N, kernel_size=5, stride=2),
+            GDN(N, inverse=True),
+            Win_noShift_Attention(dim=N, num_heads=8, window_size=8, shift_size=4),
+            deconv(N, N, kernel_size=5, stride=2),
+            GDN(N, inverse=True),
+            deconv(N, N, kernel_size=5, stride=2),
+            GDN(N, inverse=True),
+            deconv(N, 9, kernel_size=5, stride=2),
+        )
+
+        self.h_a = nn.Sequential(
+            conv3x3(320, 320),
+            nn.GELU(),
+            conv3x3(320, 288),
+            nn.GELU(),
+            conv3x3(288, 256, stride=2),
+            nn.GELU(),
+            conv3x3(256, 224),
+            nn.GELU(),
+            conv3x3(224, 192, stride=2),
+        )
+
+        self.h_mean_s = nn.Sequential(
+            conv3x3(192, 192),
+            nn.GELU(),
+            subpel_conv3x3(192, 224, 2),
+            nn.GELU(),
+            conv3x3(224, 256),
+            nn.GELU(),
+            subpel_conv3x3(256, 288, 2),
+            nn.GELU(),
+            conv3x3(288, 320),
+        )
+
+        self.h_scale_s = nn.Sequential(
+            conv3x3(192, 192),
+            nn.GELU(),
+            subpel_conv3x3(192, 224, 2),
+            nn.GELU(),
+            conv3x3(224, 256),
+            nn.GELU(),
+            subpel_conv3x3(256, 288, 2),
+            nn.GELU(),
+            conv3x3(288, 320),
+        )
+        self.cc_mean_transforms = nn.ModuleList(
+            nn.Sequential(
+                conv(320 + 32*min(i, 5), 224, stride=1, kernel_size=3),
+                nn.GELU(),
+                conv(224, 176, stride=1, kernel_size=3),
+                nn.GELU(),
+                conv(176, 128, stride=1, kernel_size=3),
+                nn.GELU(),
+                conv(128, 64, stride=1, kernel_size=3),
+                nn.GELU(),
+                conv(64, 32, stride=1, kernel_size=3),
+            ) for i in range(10)
+        )
+        self.cc_scale_transforms = nn.ModuleList(
+            nn.Sequential(
+                conv(320 + 32 * min(i, 5), 224, stride=1, kernel_size=3),
+                nn.GELU(),
+                conv(224, 176, stride=1, kernel_size=3),
+                nn.GELU(),
+                conv(176, 128, stride=1, kernel_size=3),
+                nn.GELU(),
+                conv(128, 64, stride=1, kernel_size=3),
+                nn.GELU(),
+                conv(64, 32, stride=1, kernel_size=3),
+            ) for i in range(10)
+            )
+        self.lrp_transforms = nn.ModuleList(
+            nn.Sequential(
+                conv(320 + 32 * min(i+1, 6), 224, stride=1, kernel_size=3),
+                nn.GELU(),
+                conv(224, 176, stride=1, kernel_size=3),
+                nn.GELU(),
+                conv(176, 128, stride=1, kernel_size=3),
+                nn.GELU(),
+                conv(128, 64, stride=1, kernel_size=3),
+                nn.GELU(),
+                conv(64, 32, stride=1, kernel_size=3),
+            ) for i in range(10)
+        )
+
+        self.entropy_bottleneck = EntropyBottleneck(N)
+        self.gaussian_conditional = GaussianConditional(None)
+
+
+    def update(self, scale_table=None, force=False):
+        if scale_table is None:
+            scale_table = get_scale_table()
+        updated = self.gaussian_conditional.update_scale_table(scale_table, force=force)
+        updated |= super().update(force=force)
+        return updated
+
+
+    def forward(self, x):
+        print("x ko shape ", x.shape)
+
+        x1 = self.first(x)
+        print("x1 ko shape ", x1.shape)
+
+
+        x_rotated =[]
+        for img in x:
+            rotated = torch.rot90(img, k=1, dims=[2, 0])
+            x_rotated.append(rotated)
+        x_rotated = torch.stack(x_rotated,dim=0)
+        print("x_rotated ko shape ", x_rotated.shape)
+
+
+        x2 = self.tconv(x_rotated)
+        print("x2 ko shape ", x2.shape)
+        x2_rotated = []
+        for imge in x2:
+            rotate = torch.rot90(imge, k=1, dims=[0, 2])
+            x2_rotated.append(rotate)
+        x2_rotated = torch.stack(x2_rotated,dim=0)
+
+
+        print("x2 rot ko shape ", x2_rotated.shape)
+
+        x3 = torch.cat([x1, x2_rotated], dim=1)
+        print("x3 ko shape ", x3.shape)
+        exit()
+        y = self.g_a(x3)

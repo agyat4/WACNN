@@ -1,0 +1,4 @@
+ CUDA_VISIBLE_DEVICES=1 python train.py -d /home/nlab/data/multispectral_data/ --save --save_path  /home/nlab/PycharmProjects/attentionals/attentionals/ckpt_n/multispec4_0.5_scratch.path.tar -m cnn --cuda --checkpoint /home/nlab/PycharmProjects/attentionals/attentionals/ckpt_n/multispec4_0.5_scratch.path.tar
+
+
+  CUDA_VISIBLE_DEVICES=1 python train.py -d /home/nlab/data/multispectral_data/ --save --save_path  /home/nlab/PycharmProjects/attentionals/attentionals/ckpt_n/multispec4.1_0.5_scratch.path.tar -m cnn --cuda --checkpoint /home/nlab/PycharmProjects/attentionals/attentionals/ckpt_n/multispec4.1_0.5_scratch.path.tar
